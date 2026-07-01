@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: jira_lite_db
+    restart: always
+    environment:
+      POSTGRES_DB: jira_lite
+      POSTGRES_USER: jira_user
+      POSTGRES_PASSWORD: jira_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
