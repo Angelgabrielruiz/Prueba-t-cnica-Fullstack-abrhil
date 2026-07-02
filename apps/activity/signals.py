@@ -1,5 +1,6 @@
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 
 from apps.tasks.models import Task
 from apps.comments.models import Comment
@@ -41,6 +42,13 @@ def log_task_activity(sender, instance, created, **kwargs):
             action="task_status_changed",
             metadata={"old_status": old_status, "new_status": instance.status},
         )
+
+        if instance.status == "done" and instance.completed_at is None:
+            Task.objects.filter(pk=instance.pk).update(
+                completed_at=timezone.now()
+            )
+        elif old_status == "done" and instance.status != "done":
+            Task.objects.filter(pk=instance.pk).update(completed_at=None)
 
 
 @receiver(post_save, sender=Comment)
