@@ -18,7 +18,14 @@ from apps.tasks.serializers import TaskSerializer, TaskWriteSerializer
 class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsTaskProjectParticipant]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
-    filterset_fields = ["project", "status", "priority", "assignee"]
+    filterset_fields = {
+        "project": ["exact"],
+        "status": ["exact"],
+        "priority": ["exact"],
+        "assignee": ["exact"],
+        "due_date": ["exact", "gte", "lte"],
+        "created_at": ["gte", "lte"],
+    }
     search_fields = ["title", "description"]
 
     def get_queryset(self):

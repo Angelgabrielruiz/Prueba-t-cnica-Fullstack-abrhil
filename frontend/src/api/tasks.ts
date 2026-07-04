@@ -7,6 +7,8 @@ export interface TaskFilters {
   priority?: string;
   assignee?: number;
   search?: string;
+  due_date__gte?: string;
+  due_date__lte?: string;
 }
 
 export async function listTasks(filters: TaskFilters): Promise<Task[]> {

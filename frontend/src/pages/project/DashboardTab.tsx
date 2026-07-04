@@ -6,9 +6,10 @@ import { listActivity } from "../../api/activity";
 import { listTasks } from "../../api/tasks";
 import { Avatar } from "../../components/Avatar";
 import { ErrorState, LoadingState } from "../../components/Feedback";
+import { PriorityPill, StatusPill } from "../../components/Pills";
 import { colors, statusMeta } from "../../theme/tokens";
 import { activitySummary } from "../../utils/activity";
-import { formatDateTime, formatDuration } from "../../utils/format";
+import { dueLabel, formatDateTime, formatDuration } from "../../utils/format";
 import type { TaskStatus } from "../../types";
 import type { ProjectTabContext } from "./ProjectDetailPage";
 
@@ -53,6 +54,20 @@ export function DashboardTab() {
   const avgCompletion = dashboardQuery.data?.avg_completion_time_by_project.find(
     (row) => row.project_id === project.id,
   );
+
+  const taskList = useMemo(() => {
+    const tasks = [...(tasksQuery.data ?? [])];
+    tasks.sort((a, b) => {
+      if (a.status !== b.status) {
+        if (a.status === "done") return 1;
+        if (b.status === "done") return -1;
+      }
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    });
+    return tasks;
+  }, [tasksQuery.data]);
 
   if (tasksQuery.isLoading || dashboardQuery.isLoading) return <LoadingState />;
   if (tasksQuery.isError || dashboardQuery.isError) return <ErrorState />;
@@ -150,6 +165,53 @@ export function DashboardTab() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="card panel">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div className="panel-title" style={{ margin: 0 }}>Lista de tareas</div>
+          <button className="link-btn" onClick={() => navigate("../tasks")}>
+            Ver tablero completo →
+          </button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          {taskList.slice(0, 8).map((t) => (
+            <div
+              key={t.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                padding: "12px 0",
+                borderBottom: "1px solid var(--border)",
+              }}
+            >
+              <div style={{ flex: 1, fontSize: 13.5, fontWeight: 600, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {t.title}
+              </div>
+              <StatusPill status={t.status} />
+              <PriorityPill priority={t.priority} />
+              {t.assignee ? (
+                <Avatar id={t.assignee.id} name={t.assignee.name} size={24} />
+              ) : (
+                <div style={{ width: 24, height: 24 }} />
+              )}
+              <div style={{ fontSize: 12, color: "var(--text-muted)", width: 110, textAlign: "right", flexShrink: 0 }}>
+                {dueLabel(t.due_date)}
+              </div>
+            </div>
+          ))}
+          {taskList.length === 0 && (
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Todavía no hay tareas en este proyecto.
+            </div>
+          )}
+          {taskList.length > 8 && (
+            <div style={{ fontSize: 12, color: "var(--text-placeholder)", paddingTop: 12 }}>
+              Mostrando 8 de {taskList.length} tareas.
+            </div>
+          )}
         </div>
       </div>
     </div>

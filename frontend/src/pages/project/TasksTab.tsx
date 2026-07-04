@@ -24,16 +24,18 @@ export function TasksTab() {
   const debouncedSearch = useDebounce(search, 300);
   const [assigneeFilter, setAssigneeFilter] = useState<number | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | "all">("all");
+  const [dueBefore, setDueBefore] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
 
   const tasksQuery = useQuery({
-    queryKey: ["tasks", project.id, debouncedSearch, assigneeFilter, priorityFilter],
+    queryKey: ["tasks", project.id, debouncedSearch, assigneeFilter, priorityFilter, dueBefore],
     queryFn: () =>
       listTasks({
         project: project.id,
         search: debouncedSearch || undefined,
         assignee: assigneeFilter === "all" ? undefined : assigneeFilter,
         priority: priorityFilter === "all" ? undefined : priorityFilter,
+        due_date__lte: dueBefore || undefined,
       }),
   });
 
@@ -109,6 +111,14 @@ export function TasksTab() {
             </option>
           ))}
         </select>
+        <input
+          type="date"
+          className="filter-select"
+          style={{ maxWidth: 150 }}
+          value={dueBefore}
+          onChange={(e) => setDueBefore(e.target.value)}
+          title="Vence antes de"
+        />
         <button
           className="btn btn-primary"
           style={{ marginLeft: "auto" }}

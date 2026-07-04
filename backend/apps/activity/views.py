@@ -13,7 +13,13 @@ class ActivityViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ActivitySerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["project", "action", "user", "task"]
+    filterset_fields = {
+        "project": ["exact"],
+        "action": ["exact"],
+        "user": ["exact"],
+        "task": ["exact"],
+        "created_at": ["gte", "lte"],
+    }
 
     def get_queryset(self):
         return (

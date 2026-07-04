@@ -167,7 +167,7 @@ El campo `name` expuesto en `UserSummarySerializer` reutiliza `first_name` (ya p
 
 #### 16. Paginación y filtrado activados globalmente
 
-Se agregó `DEFAULT_PAGINATION_CLASS` (paginación por página, 20 por defecto, hasta 200 vía `?page_size=`) y `DEFAULT_FILTER_BACKENDS` con `django-filter` a nivel de proyecto (antes la app estaba instalada pero no conectada a DRF). Cada `ViewSet` declara sus propios `filterset_fields` según su patrón de consulta real (`Task`: `project`, `status`, `priority`, `assignee`; `Activity`: `project`, `action`, `user`; `Comment`: `task`). Esto resuelve directamente el requisito de "filtrar de forma flexible" sin necesitar lógica manual de queryset por cada filtro.
+Se agregó `DEFAULT_PAGINATION_CLASS` (paginación por página, 20 por defecto, hasta 200 vía `?page_size=`) y `DEFAULT_FILTER_BACKENDS` con `django-filter` a nivel de proyecto (antes la app estaba instalada pero no conectada a DRF). Cada `ViewSet` declara sus propios `filterset_fields` según su patrón de consulta real. `Task` y `Activity` usan la sintaxis de diccionario de `django-filter` para exponer también rangos de fecha (`due_date__gte`/`due_date__lte` en `Task`, `created_at__gte`/`created_at__lte` en `Activity`), no solo igualdad exacta — el enunciado pide explícitamente poder filtrar "por estado, usuario, fechas, etc.", y la primera versión solo cubría estado/usuario/prioridad. El frontend expone un selector de "vence antes de" en la pestaña de Tareas que usa este filtro.
 
 #### Posibles mejoras / alternativas consideradas
 
@@ -325,11 +325,15 @@ no como una copia estática del HTML del mockup.
 2. **Lista de proyectos** — grid de tarjetas con barra de progreso (tareas completadas/total,
    calculado en el cliente a partir de `/api/tasks/`) y avatares de miembros apilados.
 3. **Dashboard del proyecto** — tarjetas de métricas, barra de tareas por estado, actividad
-   reciente (con link a la pestaña completa) y top colaboradores, consumiendo directamente
-   `GET /api/dashboard/` (las dos queries SQL manuales del backend).
-4. **Tareas** — tablero kanban (Por hacer / En progreso / Hecho) con búsqueda debounced y chips de
-   filtro por asignado y prioridad (todo resuelto vía query params al backend, no en el cliente).
-   Modal de creación/edición y modal de detalle con cambio de estado y comentarios.
+   reciente (con link a la pestaña completa), top colaboradores (consumiendo directamente
+   `GET /api/dashboard/`, las dos queries SQL manuales del backend) **y una lista de tareas**
+   (título, estado, prioridad, asignado, fecha límite; ordenada por pendientes primero y fecha más
+   próxima) — el enunciado pide "métricas del backend" y "lista de tareas" como dos piezas
+   separadas del dashboard, no solo agregados.
+4. **Tareas** — tablero kanban (Por hacer / En progreso / Hecho) con búsqueda debounced, filtros
+   compactos (dropdown) por asignado/prioridad y por fecha límite (todo resuelto vía query params
+   al backend, no en el cliente). Modal de creación/edición y modal de detalle con cambio de
+   estado y comentarios.
 5. **Actividad** — timeline vertical del historial del proyecto con chips de filtro por tipo de
    evento, consumiendo el nuevo endpoint `GET /api/activity/`.
 6. **Miembros del proyecto** — accesible desde el avatar-stack en el header del proyecto (visible
