@@ -4,6 +4,59 @@ Gestor de proyectos simplificado (tipo Jira) construido con Django REST Framewor
 
 ---
 
+## Estructura del repositorio
+
+```
+.
+├── backend/          Django + DRF + PostgreSQL (apps/, config/, manage.py)
+├── frontend/          React + TypeScript (Vite)
+├── docker-compose.yml Orquesta db + backend + frontend
+└── README.md
+```
+
+Cada subcarpeta es autocontenida (su propio `Dockerfile`, dependencias y `.env.example`). El
+`docker-compose.yml` de la raíz es el único punto de entrada para levantar los tres servicios juntos.
+
+## Cómo ejecutar
+
+### Con Docker (recomendado)
+
+```bash
+cp .env.example .env      # ajustar si es necesario
+docker compose up --build
+```
+
+- Backend: http://localhost:8000/api/
+- Frontend: http://localhost:5173/
+- PostgreSQL: localhost:5432
+
+El backend corre `migrate` automáticamente al arrancar el contenedor. No hay seed de datos automático
+en Docker; para probar con datos de ejemplo, usar `docker compose exec backend python manage.py shell`
+y correr `seed_data.py`, o registrarse desde el frontend y crear proyectos/tareas manualmente.
+
+### Sin Docker (desarrollo local)
+
+Backend:
+```bash
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp config/.env.example config/.env   # o crear config/.env con las variables de DB
+python manage.py migrate
+python manage.py runserver
+```
+
+Frontend:
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Requiere PostgreSQL corriendo localmente (o vía `docker compose up db`) con las credenciales de
+`config/.env`.
+
 ## Modelado de datos
 
 ### Entidades
@@ -102,6 +155,20 @@ El control de acceso se implementa en dos capas complementarias, no una sola, pa
 
 `TaskWriteSerializer.validate()` verifica que el `assignee` de una tarea sea efectivamente miembro del proyecto al que pertenece la tarea, consultando `ProjectMember` dentro del propio serializer. Esta validación vive en el serializer (no en la vista ni en el modelo) porque es una regla de integridad de datos entre dos campos del mismo request (`project` + `assignee`), distinta de una regla de permisos (¿puede este usuario actuar sobre este recurso?) — esa distinción se mantiene deliberadamente en capas separadas.
 
+#### 14. Login por correo, no por username separado
+
+El diseño de UI (ver sección Frontend) solo pide **Nombre + Correo + Contraseña** al registrarse, y **Correo + Contraseña** al iniciar sesión — no existe un campo de "username" visible para el usuario. `AbstractUser` de Django exige un `USERNAME_FIELD` (por defecto `username`) para el mecanismo de auth de `rest_framework_simplejwt`. En vez de introducir un backend de autenticación custom para aceptar `email` como `USERNAME_FIELD` (más superficie de cambio, más riesgo), se optó por una solución mínima: `RegisterSerializer.create()` genera `username = email` automáticamente. El validador de username de Django acepta `@` y `.`, así que esto no requiere migración ni cambios al modelo. El frontend simplemente envía el valor del campo "Correo" como `username` al endpoint `/api/auth/login/` — una decisión de mapeo interno, no un cambio de contrato observable por el usuario final.
+
+El campo `name` expuesto en `UserSummarySerializer` reutiliza `first_name` (ya presente en `AbstractUser`, sin migración nueva) para mostrar nombres legibles en avatares, comentarios y actividad, en vez de mostrar el email crudo en toda la interfaz.
+
+#### 15. Endpoint de actividad de solo lectura
+
+`ActivityViewSet` es un `ReadOnlyModelViewSet`: el historial se genera exclusivamente vía signals (creación de tarea, cambio de estado, comentario), nunca por escritura directa del cliente. Exponerlo como editable violaría la garantía de que el log de auditoría siempre refleja eventos reales del sistema. Filtra por membresía igual que el resto de las entidades (`project__members__user`) y soporta `?project=`, `?action=`, `?user=` vía `django-filter` para las vistas de dashboard y actividad del frontend.
+
+#### 16. Paginación y filtrado activados globalmente
+
+Se agregó `DEFAULT_PAGINATION_CLASS` (paginación por página, 20 por defecto, hasta 200 vía `?page_size=`) y `DEFAULT_FILTER_BACKENDS` con `django-filter` a nivel de proyecto (antes la app estaba instalada pero no conectada a DRF). Cada `ViewSet` declara sus propios `filterset_fields` según su patrón de consulta real (`Task`: `project`, `status`, `priority`, `assignee`; `Activity`: `project`, `action`, `user`; `Comment`: `task`). Esto resuelve directamente el requisito de "filtrar de forma flexible" sin necesitar lógica manual de queryset por cada filtro.
+
 #### Posibles mejoras / alternativas consideradas
 
 - `Task.created_by` podría usar `PROTECT` en vez de `CASCADE` para nunca perder autoría histórica de tareas.
@@ -109,6 +176,18 @@ El control de acceso se implementa en dos capas complementarias, no una sola, pa
 - `Activity.metadata` como `JSONField` da flexibilidad para distintos tipos de evento sin migración, pero sacrifica la capacidad de indexar o validar su contenido a nivel de base de datos — trade-off consciente entre flexibilidad y rigidez de esquema.
 - El `user` registrado en `Activity` para `task_status_changed` se infiere como `assignee or created_by`, no necesariamente el usuario real que ejecutó el `PATCH` — limitación conocida; una solución más precisa requeriría pasar explícitamente `request.user` hasta el signal (por ejemplo, vía `instance._changed_by` asignado en la vista antes de guardar).
 - El filtrado por membresía en el endpoint de dashboard se hace actualmente en Python, después de traer los resultados agregados de todos los proyectos (ver sección PostgreSQL, punto 3) — simplificación consciente, con ruta de mejora documentada.
+
+#### 17. Invitar/quitar miembros como acciones del `ProjectViewSet`, no un ViewSet aparte
+
+`POST /api/projects/{id}/members/` y `DELETE /api/projects/{id}/members/{user_id}/` se implementaron como `@action` de `ProjectViewSet` (no como un `ProjectMemberViewSet` independiente) porque toda la lógica de permisos ya existe a nivel de objeto `Project`: `get_object()` evalúa `IsProjectMember.has_object_permission`, que para métodos no seguros (`POST`/`DELETE`) ya exige `role == "admin"` — reutilizar esa capa evita duplicar la regla "solo un admin gestiona miembros" en un permission class nuevo.
+
+- **Invitar** busca al usuario por `email` (debe existir una cuenta previa; no hay invitación por correo electrónico real fuera de la app, está fuera de alcance). Devuelve `400` con mensaje claro si el correo no corresponde a ningún usuario o si ya es miembro.
+- **Quitar** un miembro con `role="admin"` está bloqueado si es el único admin restante del proyecto, para no repetir el problema de "proyecto huérfano" que ya se previno en la creación (punto 12).
+- En el frontend, el modal de miembros solo muestra el formulario de invitar/quitar si el usuario actual es admin del proyecto — la restricción real sigue viviendo en el backend, esto es solo UX.
+
+**Nota de corrección (condición de carrera en registro):** el `UniqueValidator` que DRF genera automáticamente para `email` en `RegisterSerializer` hace una validación de tipo *check-then-insert*, no atómica. Dos registros concurrentes con el mismo correo (ej. doble clic en "Crear cuenta", o dos pestañas registrando la misma cuenta a la vez) pueden pasar ambos la validación y competir en el `INSERT`, y el segundo terminaba en un `IntegrityError` sin capturar (`500`) en vez de un `400` legible — reproducido disparando dos requests verdaderamente concurrentes contra `/api/auth/register/`. Se corrigió envolviendo `User.objects.create_user()` en un `try/except IntegrityError` dentro de `RegisterSerializer.create()`, traduciendo el error a una `ValidationError` de DRF.
+
+**Nota de corrección:** `TaskViewSet.update()` construía la respuesta de lectura a partir de la instancia ya guardada en memoria, pero el signal que fija `completed_at` cuando una tarea pasa a `done` lo hace con una query `.update()` separada (para no volver a disparar `post_save`). Eso dejaba la respuesta del `PATCH` con `completed_at: null` durante un ciclo, aunque el valor ya estuviera correcto en la base de datos (confirmado comparando contra el promedio de `GET /api/dashboard/`). Se corrigió con `task.refresh_from_db()` antes de serializar la respuesta.
 
 ---
 
@@ -209,6 +288,138 @@ Cada índice corresponde a un patrón de consulta distinto de la aplicación —
 
 ---
 
+## Frontend
+
+React 19 + TypeScript, construido con Vite. El diseño visual (paleta, tipografía, layout de las
+cuatro vistas) se importó desde un mockup propio hecho en claude.ai/design ("Diseño Jira naranja
+pastel" / `Ambar.dc.html`) y se re-implementó como componentes React reales conectados a la API,
+no como una copia estática del HTML del mockup.
+
+### Stack y decisiones técnicas
+
+- **React Router v7** para el ruteo, incluyendo rutas anidadas para las pestañas del proyecto
+  (`/projects/:id/dashboard`, `/tasks`, `/activity`) — el tab activo vive en la URL, no en estado
+  local, para que sea navegable y compartible.
+- **TanStack Query** para todo el estado de servidor (proyectos, tareas, comentarios, actividad,
+  dashboard). Se usa `invalidateQueries` con claves por prefijo (ej. `["tasks"]`) tras cada
+  mutación para refrescar automáticamente el kanban, el dashboard y la actividad sin lógica manual
+  de refetch.
+- **Context de autenticación** (`AuthContext`) propio en vez de una librería externa: el estado de
+  auth es simple (usuario actual + tokens), no justifica una dependencia adicional.
+- **Axios** con un interceptor de request (adjunta el `access token`) y uno de response que
+  detecta `401`, refresca el token automáticamente vía `/api/auth/login/refresh/` una sola vez por
+  request fallido (con una promesa compartida para no disparar múltiples refresh en paralelo), y
+  reintenta la petición original. Si el refresh falla, limpia la sesión y dispara un evento global
+  que desloguea al usuario.
+- **CSS plano con variables** (sin Tailwind ni librería de componentes): dado que el diseño ya
+  venía completamente especificado (colores, espaciados, radios) desde el mockup, una utility-first
+  library habría sido una capa de indirección sin beneficio real para esta cantidad de vistas.
+- **`useDebounce`** (300ms) aplicado al campo de búsqueda de tareas antes de disparar la query a
+  `/api/tasks/?search=`, para no golpear el backend en cada tecla.
+
+### Vistas implementadas
+
+1. **Login / Registro** — pantalla partida con formulario + panel animado, coincidiendo con el
+   mockup. El registro pide Nombre/Correo/Contraseña (ver punto 14 de la sección de backend sobre
+   por qué el login funciona con correo).
+2. **Lista de proyectos** — grid de tarjetas con barra de progreso (tareas completadas/total,
+   calculado en el cliente a partir de `/api/tasks/`) y avatares de miembros apilados.
+3. **Dashboard del proyecto** — tarjetas de métricas, barra de tareas por estado, actividad
+   reciente (con link a la pestaña completa) y top colaboradores, consumiendo directamente
+   `GET /api/dashboard/` (las dos queries SQL manuales del backend).
+4. **Tareas** — tablero kanban (Por hacer / En progreso / Hecho) con búsqueda debounced y chips de
+   filtro por asignado y prioridad (todo resuelto vía query params al backend, no en el cliente).
+   Modal de creación/edición y modal de detalle con cambio de estado y comentarios.
+5. **Actividad** — timeline vertical del historial del proyecto con chips de filtro por tipo de
+   evento, consumiendo el nuevo endpoint `GET /api/activity/`.
+6. **Miembros del proyecto** — accesible desde el avatar-stack en el header del proyecto (visible
+   en las tres pestañas). Cualquier miembro puede ver la lista; solo un admin ve el formulario para
+   invitar (por correo, a usuarios ya registrados) o quitar colaboradores, consumiendo
+   `POST`/`DELETE /api/projects/{id}/members/`.
+
+### Manejo de errores y loading
+
+Cada vista distingue explícitamente entre estado de carga (`LoadingState`), error (`ErrorState`) y
+vacío (mensajes específicos como "Todavía no perteneces a ningún proyecto"). Los formularios
+muestran errores de validación devueltos por la API (extraídos del cuerpo de la respuesta de DRF)
+en vez de mensajes genéricos.
+
+## Docker
+
+`docker-compose.yml` en la raíz levanta los tres servicios:
+
+- `db`: PostgreSQL 16, con healthcheck (`pg_isready`) — `backend` espera a que la base esté lista
+  antes de arrancar (`depends_on: condition: service_healthy`).
+- `backend`: imagen basada en `python:3.12-slim`, corre `migrate --noinput` y luego `gunicorn` al
+  arrancar el contenedor. La configuración (DB, `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`,
+  `CORS_ALLOWED_ORIGINS`) viene 100% de variables de entorno — el mismo `settings.py` sirve para
+  desarrollo local y para Docker sin cambios de código.
+- `frontend`: build multi-stage — Node compila el bundle de Vite (`VITE_API_URL` se inyecta como
+  build arg, ya que Vite resuelve `import.meta.env` en tiempo de build, no en runtime) y Nginx sirve
+  los archivos estáticos con fallback a `index.html` para las rutas de React Router.
+
+Variables de entorno documentadas en `.env.example` (raíz). Verificado extremo a extremo: build de
+ambas imágenes, arranque de los tres contenedores, headers CORS correctos entre `frontend` (origen
+`http://localhost:5173`) y `backend`, y fallback de SPA para rutas profundas (`/projects/1/tasks`
+devuelve `200` con `index.html`, no `404`).
+
+## Arquitectura
+
+### 1. ¿Cómo escalarías este sistema?
+
+- **Horizontal antes que vertical**: tanto `backend` como `frontend` son *stateless* (la sesión
+  vive en el JWT, no en memoria del servidor), así que escalar es levantar más réplicas del
+  contenedor `backend` detrás de un load balancer — no requiere cambios de arquitectura.
+- **Separar la base de datos** del contenedor a un servicio administrado (RDS, Cloud SQL) apenas se
+  salga de un entorno de prueba, con réplicas de lectura para las queries pesadas del dashboard
+  (las dos queries SQL manuales son buenas candidatas para apuntar a un réplica de solo lectura).
+- **Mover el registro de actividad a un modelo asíncrono** (cola tipo Celery/Redis o un
+  event bus) si el volumen de escritura creciera mucho: hoy cada `Activity.objects.create()` ocurre
+  síncronamente dentro del signal, bloqueando la respuesta del request original.
+
+### 2. ¿Dónde implementarías caching?
+
+- **Dashboard (`GET /api/dashboard/`)**: es el candidato más claro, ya que agrega datos de todos
+  los proyectos del usuario en cada request. Cachear por usuario con un TTL corto (30-60s) en Redis
+  reduciría drásticamente la carga en las dos queries SQL manuales sin afectar mucho la frescura
+  percibida (ver también "vistas materializadas" en la sección PostgreSQL).
+- **Lista de proyectos y miembros**: cambian con poca frecuencia comparado con tareas/comentarios;
+  son buenos candidatos para cache con invalidación explícita en el `ViewSet` (`cache.delete()` en
+  `create`/`update`) en vez de solo TTL.
+- **En el frontend**, TanStack Query ya actúa como cache de cliente (evita refetch innecesario al
+  navegar entre pestañas ya visitadas); el siguiente paso natural sería `staleTime` por tipo de
+  recurso (ej. proyectos: unos minutos; actividad: segundos) en vez del default actual (`0`).
+
+### 3. ¿Cómo manejarías concurrencia?
+
+- **Optimistic locking** en `Task` (un campo `version` o comparar `updated_at`) para el caso de dos
+  usuarios editando la misma tarea al mismo tiempo — hoy el último `PATCH` gana silenciosamente.
+- Las operaciones que ya son transaccionales (creación de proyecto + membership, creación/edición
+  de tarea) siguen siendo correctas bajo concurrencia porque usan `transaction.atomic()`, pero no
+  previenen *lost updates* en ediciones concurrentes del mismo recurso — eso requeriría locking
+  explícito (`select_for_update()`) o los headers condicionales de HTTP (`If-Match` con ETag).
+- Para el contador de actividad/dashboard bajo alta escritura concurrente, agregaciones a nivel de
+  base de datos (`COUNT`, `AVG` ya usados) son inherentemente consistentes porque PostgreSQL
+  garantiza aislamiento de transacciones — el riesgo de concurrencia está en la escritura de
+  recursos individuales (tareas, comentarios), no en las lecturas agregadas.
+
+### 4. ¿Qué mejorarías del diseño actual?
+
+- Invitación real por correo electrónico (con token de invitación y registro directo) para
+  colaboradores que todavía no tienen cuenta — hoy `POST /api/projects/{id}/members/` solo permite
+  agregar usuarios que ya existen en el sistema (ver punto 17 de Modelado de datos).
+- Mover el filtrado por membresía del dashboard de Python a SQL (documentado como simplificación
+  consciente en la sección PostgreSQL).
+- `Task.created_by` con `on_delete=PROTECT` en vez de `CASCADE`, para nunca perder autoría
+  histórica de tareas.
+- Registrar explícitamente qué usuario ejecutó un cambio de estado en `Activity` (hoy se infiere
+  como `assignee or created_by`, no necesariamente quien hizo el `PATCH`).
+- Tests automatizados de extremo a extremo (hoy la verificación fue manual + Playwright ad-hoc
+  durante el desarrollo, documentada en este README, pero no forma parte del repositorio como suite
+  de CI).
+
+---
+
 ## Progreso
 
 ### ✅ Completado (Día 1 — Modelado + setup)
@@ -244,8 +455,16 @@ Cada índice corresponde a un patrón de consulta distinto de la aplicación —
 - Datos de prueba realistas generados (4 usuarios, 11 tareas completadas con tiempos variados) para validar que el ranking y el promedio reflejan datos reales, no un caso trivial
 - Sección PostgreSQL del README documentada (queries, justificación de indexación, estrategia de optimización)
 
-### ⏳ Pendiente
+### ✅ Completado (Día 4 — Reorganización, frontend, Docker)
 
-- Frontend React + TypeScript (lista de proyectos, dashboard, gestión de tareas, actividad)
-- Dockerización completa (backend + frontend + PostgreSQL en `docker-compose`)
-- Sección de arquitectura del README (escalabilidad, caching, concurrencia, mejoras)
+- Repositorio reorganizado en `backend/` y `frontend/` como proyectos independientes
+- Endpoint `GET /api/activity/` (faltaba: la app existía con signals pero sin serializer/vista/url) — solo lectura, filtrable por proyecto/acción/usuario
+- `django-cors-headers` configurado para que el frontend (otro origen) pueda consumir la API
+- Paginación y filtrado (`django-filter`) activados globalmente en DRF; `filterset_fields` por entidad
+- `RegisterSerializer` extendido para pedir Nombre en vez de username (login funciona con correo, ver punto 14 de Modelado de datos)
+- Corrección: `TaskViewSet.update()` no reflejaba `completed_at` recién calculado por el signal en la respuesta del `PATCH`
+- Frontend React + TypeScript completo (Vite, React Router, TanStack Query, Axios): login/registro, lista de proyectos, dashboard, kanban de tareas con filtros y comentarios, actividad — diseño visual importado desde un mockup propio en claude.ai/design
+- Dockerización completa: `Dockerfile` para backend (gunicorn) y frontend (build de Vite + Nginx), `docker-compose.yml` orquestando `db` + `backend` + `frontend`, verificado extremo a extremo (build, arranque, CORS, fallback de SPA)
+- Sección de arquitectura del README respondida (escalabilidad, caching, concurrencia, mejoras)
+- Invitar/quitar miembros de un proyecto (`POST`/`DELETE /api/projects/{id}/members/`, solo admins) + modal de miembros en el frontend — verificado con dos usuarios reales en navegadores separados (invitación, permisos de no-admin rechazados, el invitado ve el proyecto al iniciar sesión)
+- Corrección: condición de carrera en `/api/auth/register/` (dos registros concurrentes con el mismo correo producían un `500` sin capturar en vez de un `400`), reproducida con requests verdaderamente concurrentes y corregida

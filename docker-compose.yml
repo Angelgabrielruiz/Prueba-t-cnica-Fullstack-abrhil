@@ -4,13 +4,50 @@ services:
     container_name: jira_lite_db
     restart: always
     environment:
-      POSTGRES_DB: jira_lite
-      POSTGRES_USER: jira_user
-      POSTGRES_PASSWORD: jira_pass
+      POSTGRES_DB: ${DB_NAME:-jira_lite}
+      POSTGRES_USER: ${DB_USER:-jira_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jira_pass}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-jira_user} -d ${DB_NAME:-jira_lite}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: jira_lite_backend
+    restart: always
+    environment:
+      DB_NAME: ${DB_NAME:-jira_lite}
+      DB_USER: ${DB_USER:-jira_user}
+      DB_PASSWORD: ${DB_PASSWORD:-jira_pass}
+      DB_HOST: db
+      DB_PORT: 5432
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      DEBUG: ${DEBUG:-False}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api}
+    container_name: jira_lite_frontend
+    restart: always
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
