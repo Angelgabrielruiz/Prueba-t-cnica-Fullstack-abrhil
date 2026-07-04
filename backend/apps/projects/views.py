@@ -45,6 +45,16 @@ class ProjectViewSet(viewsets.ModelViewSet):
         read_serializer = ProjectSerializer(project, context=self.get_serializer_context())
         return Response(read_serializer.data, status=201)
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        write_serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        write_serializer.is_valid(raise_exception=True)
+        project = write_serializer.save()
+
+        read_serializer = ProjectSerializer(project, context=self.get_serializer_context())
+        return Response(read_serializer.data)
+
     @action(detail=True, methods=["post"], url_path="members")
     def add_member(self, request, pk=None):
         # get_object() ya aplica IsProjectMember.has_object_permission: un método no

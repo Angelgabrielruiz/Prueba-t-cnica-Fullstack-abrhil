@@ -52,13 +52,6 @@ export function AuthPage() {
   return (
     <div className="auth-page">
       <div className="auth-wrap">
-        <div className="auth-badge">
-          <Logo size={24} />
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: "#33415C" }}>
-            abrhil.com/app
-          </span>
-        </div>
-
         <div className="auth-card">
           <div className="auth-form-side">
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 26 }}>
@@ -159,25 +152,14 @@ export function AuthPage() {
           </div>
 
           <div className="auth-art-side">
-            <div className="auth-blob" style={{ width: 220, height: 220, background: "rgba(255,255,255,0.08)", top: -60, left: -50, animation: "floatA 9s ease-in-out infinite" }} />
-            <div className="auth-blob" style={{ width: 90, height: 90, background: "rgba(184,134,11,0.35)", top: "14%", right: "12%", animation: "floatB 7s ease-in-out infinite" }} />
-            <div className="auth-blob" style={{ width: 140, height: 140, background: "rgba(255,255,255,0.06)", bottom: -40, right: -30, animation: "floatB 10s ease-in-out infinite" }} />
-
-            <div className="auth-logo-mark">
-              <div style={{ width: 200, height: 200, borderRadius: "50%", background: "rgba(255,255,255,0.12)", position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", filter: "blur(6px)" }} />
-              <div style={{ position: "relative", filter: "drop-shadow(0 18px 30px rgba(2,12,40,0.35))" }}>
-                <Logo size={150} />
-              </div>
-            </div>
-
-            <div style={{ position: "absolute", bottom: 32, left: 0, right: 0, textAlign: "center", padding: "0 30px" }}>
-              <div style={{ fontSize: 15.5, fontWeight: 700, color: "#fff" }}>
-                Gestiona tus proyectos en un solo lugar
-              </div>
-              <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.75)", marginTop: 6 }}>
-                Equipos, tareas y actividad, siempre sincronizados.
-              </div>
-            </div>
+            <video
+              src="/videos/animacion-inicio.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+            />
           </div>
         </div>
       </div>

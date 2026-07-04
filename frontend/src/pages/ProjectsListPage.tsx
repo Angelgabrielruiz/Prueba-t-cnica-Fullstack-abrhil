@@ -5,6 +5,7 @@ import { createProject, listProjects } from "../api/projects";
 import { listTasks } from "../api/tasks";
 import { Avatar } from "../components/Avatar";
 import { ErrorState, LoadingState } from "../components/Feedback";
+import { ProjectFormModal } from "../components/project/ProjectFormModal";
 import { colorForId } from "../theme/tokens";
 import type { ProjectWrite } from "../types";
 
@@ -103,7 +104,7 @@ export function ProjectsListPage() {
       )}
 
       {showCreate && (
-        <CreateProjectModal
+        <ProjectFormModal
           onClose={() => setShowCreate(false)}
           onSubmit={(payload) => createMutation.mutate(payload)}
           submitting={createMutation.isPending}
@@ -111,71 +112,5 @@ export function ProjectsListPage() {
         />
       )}
     </>
-  );
-}
-
-function CreateProjectModal({
-  onClose,
-  onSubmit,
-  submitting,
-  error,
-}: {
-  onClose: () => void;
-  onSubmit: (payload: ProjectWrite) => void;
-  submitting: boolean;
-  error: boolean;
-}) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [titleError, setTitleError] = useState(false);
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ width: 460 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-title" style={{ marginBottom: 20 }}>Nuevo proyecto</div>
-        <div className="form-stack">
-          <div>
-            <div className="field-label">Título</div>
-            <input
-              className={"input" + (titleError ? " input-error" : "")}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Nombre del proyecto"
-            />
-          </div>
-          <div>
-            <div className="field-label">Descripción</div>
-            <textarea
-              className="input"
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Detalles del proyecto…"
-              style={{ resize: "vertical", fontFamily: "inherit" }}
-            />
-          </div>
-          {error && <div className="field-error">No se pudo crear el proyecto. Intenta de nuevo.</div>}
-          <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
-            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>
-              Cancelar
-            </button>
-            <button
-              className="btn btn-primary"
-              style={{ flex: 1 }}
-              disabled={submitting}
-              onClick={() => {
-                if (!title.trim()) {
-                  setTitleError(true);
-                  return;
-                }
-                onSubmit({ title, description });
-              }}
-            >
-              {submitting ? "Creando…" : "Crear proyecto"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }

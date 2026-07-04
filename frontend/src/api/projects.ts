@@ -26,6 +26,10 @@ export async function updateProject(
   return data;
 }
 
+export async function deleteProject(id: number): Promise<void> {
+  await apiClient.delete(`/projects/${id}/`);
+}
+
 export async function addMember(
   projectId: number,
   email: string,

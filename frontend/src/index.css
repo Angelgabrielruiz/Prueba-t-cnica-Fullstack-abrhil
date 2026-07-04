@@ -66,26 +66,6 @@ a {
   }
 }
 
-@keyframes floatA {
-  0%,
-  100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-18px);
-  }
-}
-
-@keyframes floatB {
-  0%,
-  100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(16px);
-  }
-}
-
 /* ---------- shared primitives ---------- */
 
 .input {
@@ -248,21 +228,6 @@ a {
   width: 100%;
 }
 
-.auth-badge {
-  position: absolute;
-  top: 22px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #fff;
-  border-radius: 999px;
-  padding: 7px 20px 7px 7px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 8px 22px rgba(4, 25, 70, 0.14);
-  z-index: 2;
-}
-
 .auth-card {
   background: #fff;
   display: flex;
@@ -285,19 +250,6 @@ a {
   position: relative;
   background: linear-gradient(160deg, #04327d 0%, #0757c4 60%, #027bff 100%);
   overflow: hidden;
-}
-
-.auth-blob {
-  position: absolute;
-  border-radius: 50%;
-}
-
-.auth-logo-mark {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -58%);
-  animation: floatA 6s ease-in-out infinite;
 }
 
 /* ---------- app shell ---------- */

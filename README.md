@@ -319,9 +319,11 @@ no como una copia estática del HTML del mockup.
 
 ### Vistas implementadas
 
-1. **Login / Registro** — pantalla partida con formulario + panel animado, coincidiendo con el
-   mockup. El registro pide Nombre/Correo/Contraseña (ver punto 14 de la sección de backend sobre
-   por qué el login funciona con correo).
+1. **Login / Registro** — pantalla partida a todo el viewport: formulario a la izquierda, video de
+   marca (`frontend/public/videos/animacion-inicio.mp4`, ~17 MB, servido como asset estático — no
+   pasa por el bundler de Vite) en autoplay/loop/muted a la derecha. El registro pide
+   Nombre/Correo/Contraseña (ver punto 14 de la sección de backend sobre por qué el login funciona
+   con correo).
 2. **Lista de proyectos** — grid de tarjetas con barra de progreso (tareas completadas/total,
    calculado en el cliente a partir de `/api/tasks/`) y avatares de miembros apilados.
 3. **Dashboard del proyecto** — tarjetas de métricas, barra de tareas por estado, actividad
@@ -351,6 +353,16 @@ no como una copia estática del HTML del mockup.
    en las tres pestañas). Cualquier miembro puede ver la lista; solo un admin ve el formulario para
    invitar (por correo, a usuarios ya registrados) o quitar colaboradores, consumiendo
    `POST`/`DELETE /api/projects/{id}/members/`.
+7. **Editar / eliminar proyecto** — íconos junto al título, visibles solo para admins del proyecto
+   (el backend igual lo exige vía `IsProjectMember`, esto es solo UX). Editar reutiliza el mismo
+   modal que "Nuevo proyecto" (`ProjectFormModal`, un solo componente para create/edit). Eliminar
+   pide confirmación explícita (`ConfirmModal`, componente reutilizable) advirtiendo que se borran
+   en cascada tareas, comentarios y actividad — coherente con `on_delete=CASCADE` en `Task.project`.
+
+   **Nota de corrección:** igual que `TaskViewSet`/`CommentViewSet`, `ProjectViewSet.update()` no
+   estaba sobreescrito, así que el `PATCH` devolvía el `ProjectWriteSerializer` (solo
+   `title`/`description`/`status`) en vez del objeto completo con `id`, `members`, etc. Se corrigió
+   con el mismo patrón: guardar con el serializer de escritura, responder con el de lectura.
 
 ### Manejo de errores y loading
 
