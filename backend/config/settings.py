@@ -30,7 +30,10 @@ def require_env(key):
 SECRET_KEY = require_env("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "True") == "True"
+# Fail-secure: si falta la variable en el entorno (ej. un despliegue en VPS sin
+# Docker Compose, que es el único que la exige vía `:?`), se asume producción
+# en vez de exponer stack traces y activar el regex de CORS de abajo.
+DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
@@ -150,6 +153,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    # Red de seguridad: cada ViewSet ya declara su propia permission_class
+    # (membresía de proyecto, admin-only, etc.), pero este default evita que
+    # una vista nueva quede accesible sin autenticar si alguien olvida
+    # declararlo explícitamente.
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
     ),
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",

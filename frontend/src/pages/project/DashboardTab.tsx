@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useOutletContext } from "react-router-dom";
 import { getDashboard } from "../../api/dashboard";
@@ -6,6 +6,7 @@ import { listActivity } from "../../api/activity";
 import { listTasks } from "../../api/tasks";
 import { Avatar } from "../../components/Avatar";
 import { ErrorState, LoadingState } from "../../components/Feedback";
+import { ChevronLeftIcon, ChevronRightIcon } from "../../components/icons";
 import { PriorityPill, StatusPill } from "../../components/Pills";
 import { colors, statusMeta } from "../../theme/tokens";
 import { activitySummary } from "../../utils/activity";
@@ -13,9 +14,13 @@ import { dueLabel, formatDateTime, formatDuration } from "../../utils/format";
 import type { TaskStatus } from "../../types";
 import type { ProjectTabContext } from "./ProjectDetailPage";
 
+const TASKS_PAGE_SIZE = 5;
+
 export function DashboardTab() {
   const { project } = useOutletContext<ProjectTabContext>();
   const navigate = useNavigate();
+  const [taskPage, setTaskPage] = useState(0);
+  useEffect(() => setTaskPage(0), [project.id]);
 
   const tasksQuery = useQuery({
     queryKey: ["tasks", project.id],
@@ -83,6 +88,13 @@ export function DashboardTab() {
 
   if (tasksQuery.isLoading || dashboardQuery.isLoading) return <LoadingState />;
   if (tasksQuery.isError || dashboardQuery.isError) return <ErrorState />;
+
+  const totalTaskPages = Math.max(1, Math.ceil(taskList.length / TASKS_PAGE_SIZE));
+  const currentTaskPage = Math.min(taskPage, totalTaskPages - 1);
+  const pagedTasks = taskList.slice(
+    currentTaskPage * TASKS_PAGE_SIZE,
+    currentTaskPage * TASKS_PAGE_SIZE + TASKS_PAGE_SIZE,
+  );
 
   const metricCards = [
     { label: "Total de tareas", value: stats.total, color: colors.text },
@@ -216,7 +228,7 @@ export function DashboardTab() {
           </button>
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
-          {taskList.slice(0, 8).map((t) => (
+          {pagedTasks.map((t) => (
             <div
               key={t.id}
               style={{
@@ -247,12 +259,46 @@ export function DashboardTab() {
               Todavía no hay tareas en este proyecto.
             </div>
           )}
-          {taskList.length > 8 && (
-            <div style={{ fontSize: 12, color: "var(--text-placeholder)", paddingTop: 12 }}>
-              Mostrando 8 de {taskList.length} tareas.
-            </div>
-          )}
         </div>
+        {taskList.length > TASKS_PAGE_SIZE && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingTop: 14,
+              marginTop: 4,
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            <div style={{ fontSize: 12, color: "var(--text-placeholder)" }}>
+              Mostrando {currentTaskPage * TASKS_PAGE_SIZE + 1}–
+              {Math.min(taskList.length, currentTaskPage * TASKS_PAGE_SIZE + TASKS_PAGE_SIZE)} de{" "}
+              {taskList.length} tareas
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: "5px 9px", display: "flex", alignItems: "center" }}
+                disabled={currentTaskPage === 0}
+                onClick={() => setTaskPage((p) => Math.max(0, p - 1))}
+              >
+                <ChevronLeftIcon size={13} />
+              </button>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-muted)" }}>
+                {currentTaskPage + 1} / {totalTaskPages}
+              </span>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: "5px 9px", display: "flex", alignItems: "center" }}
+                disabled={currentTaskPage >= totalTaskPages - 1}
+                onClick={() => setTaskPage((p) => Math.min(totalTaskPages - 1, p + 1))}
+              >
+                <ChevronRightIcon size={13} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

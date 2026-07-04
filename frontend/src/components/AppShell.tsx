@@ -19,6 +19,9 @@ export function AppShell() {
     queryFn: listProjects,
   });
 
+  const ownProjects = projects?.filter((p) => p.created_by.id === user?.id);
+  const collaboratingProjects = projects?.filter((p) => p.created_by.id !== user?.id);
+
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
 
   useEffect(() => {
@@ -59,9 +62,9 @@ export function AppShell() {
           </NavLink>
         </div>
 
-        {!collapsed && <div className="sidebar-section-label">TUS PROYECTOS</div>}
         <div className="sidebar-projects" style={{ marginTop: collapsed ? 10 : 0 }}>
-          {projects?.map((p) => (
+          {!collapsed && <div className="sidebar-section-label" style={{ marginTop: 14 }}>MIS PROYECTOS</div>}
+          {ownProjects?.map((p) => (
             <button
               key={p.id}
               onClick={() => navigate(`/projects/${p.id}`)}
@@ -75,6 +78,29 @@ export function AppShell() {
               {!collapsed && <span className="label">{p.title}</span>}
             </button>
           ))}
+          {!collapsed && ownProjects?.length === 0 && (
+            <div className="sidebar-empty-hint">Sin proyectos propios</div>
+          )}
+
+          {(collaboratingProjects?.length ?? 0) > 0 && (
+            <>
+              {!collapsed && <div className="sidebar-section-label">COLABORANDO</div>}
+              {collaboratingProjects?.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => navigate(`/projects/${p.id}`)}
+                  title={p.title}
+                  className={
+                    "sidebar-project-btn" +
+                    (String(p.id) === projectId ? " active" : "")
+                  }
+                >
+                  <ProjectIcon id={p.id} name={p.title} />
+                  {!collapsed && <span className="label">{p.title}</span>}
+                </button>
+              ))}
+            </>
+          )}
         </div>
 
         <div className="sidebar-footer">

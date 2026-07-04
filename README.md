@@ -398,8 +398,42 @@ GitHub, aunque sea un placeholder. Se cambió a `${DB_PASSWORD:?mensaje}` (varia
 falta `.env`, Compose falla de inmediato con un mensaje explicando qué copiar, en vez de arrancar
 silenciosamente con un valor implícito. Se aplicó el mismo criterio en `config/settings.py`
 (`SECRET_KEY`, credenciales de base de datos) vía un helper `require_env()` que lanza
-`ImproperlyConfigured` con instrucciones si la variable no está definida — `DEBUG`, `ALLOWED_HOSTS`
-y `DB_PORT` conservan un default razonable porque no son datos sensibles.
+`ImproperlyConfigured` con instrucciones si la variable no está definida — `ALLOWED_HOSTS` y
+`DB_PORT` conservan un default razonable porque no son datos sensibles. `DEBUG` es la excepción: su
+default en código es `False` (fail-secure), no `True`, precisamente para el escenario descrito abajo.
+
+### Notas para desplegar en un VPS
+
+`docker-compose.yml` ya obliga (`${VAR:?mensaje}`) a definir `DEBUG`, `SECRET_KEY`,
+`ALLOWED_HOSTS` y `CORS_ALLOWED_ORIGINS` en el `.env` antes de levantar el contenedor — si falta
+alguna, Compose falla al arrancar en vez de arrancar con un valor implícito. Pero esa protección es
+de Compose, no de Django: si en algún momento el backend se corre directo en el VPS (systemd +
+gunicorn, sin Docker) y la variable `DEBUG` no llega al proceso por cualquier motivo, el propio
+`settings.py` ahora asume `False` por default (`os.getenv("DEBUG", "False")`), no `True` como venía
+originalmente — así nunca queda expuesto el modo debug de Django (stack traces, `SECRET_KEY` en
+error pages) solo por una variable de entorno faltante.
+
+Esto importa en particular por `CORS_ALLOWED_ORIGIN_REGEXES` (agregado para que el frontend de
+desarrollo funcione sin importar en qué puerto libre lo levante Vite): esa regla que acepta
+cualquier puerto de `localhost`/`127.0.0.1` solo se activa `if DEBUG`, así que con el default
+fail-secure queda descartada automáticamente en cualquier entorno donde no se haya *activado
+explícitamente* el modo desarrollo.
+
+Checklist real para el `.env` de un VPS:
+
+- `DEBUG=False` explícito (no depender del default, aunque ahora sea seguro).
+- `ALLOWED_HOSTS` con el dominio/IP real del VPS (el default `localhost,127.0.0.1` rechaza
+  cualquier request que llegue por el dominio público).
+- `CORS_ALLOWED_ORIGINS` con el origen real del frontend servido (ej. `https://app.midominio.com`),
+  no los `localhost` de desarrollo — con `DEBUG=False` el regex de cualquier puerto de localhost
+  queda desactivado, así que este valor es el único que decide qué orígenes pueden llamar a la API.
+- `SECRET_KEY` generado para el entorno (nunca reusar el de `.env.example`).
+- A nivel de DRF se agregó `DEFAULT_PERMISSION_CLASSES: (IsAuthenticated,)` como red de seguridad:
+  cada `ViewSet` ya declara su propio permiso (membresía de proyecto, admin-only, autor del
+  comentario), pero este default evita que una vista nueva quede pública por accidente si alguien
+  olvida declarar `permission_classes` explícitamente. Las vistas que sí deben ser públicas
+  (`register`, `login`, `login/refresh`) ya declaran `AllowAny` de forma explícita, así que no se
+  ven afectadas.
 
 ## Arquitectura
 
@@ -506,3 +540,16 @@ y `DB_PORT` conservan un default razonable porque no son datos sensibles.
 - Sección de arquitectura del README respondida (escalabilidad, caching, concurrencia, mejoras)
 - Invitar/quitar miembros de un proyecto (`POST`/`DELETE /api/projects/{id}/members/`, solo admins) + modal de miembros en el frontend — verificado con dos usuarios reales en navegadores separados (invitación, permisos de no-admin rechazados, el invitado ve el proyecto al iniciar sesión)
 - Corrección: condición de carrera en `/api/auth/register/` (dos registros concurrentes con el mismo correo producían un `500` sin capturar en vez de un `400`), reproducida con requests verdaderamente concurrentes y corregida
+
+### ✅ Completado (Día 5 — UX del tablero, archivado de tareas y hardening para VPS)
+
+- Sidebar colapsable (modo solo-íconos) e íconos de proyecto por iniciales
+- Filtrado por fecha (`due_date__lte`) y lista de tareas resumida en el dashboard, alineado con el spec
+- Ranking de top-completers expuesto como badge visible en el dashboard, no solo en el JSON crudo
+- Drag-and-drop para mover tareas entre columnas del kanban (además del selector de estado ya existente)
+- Edición/borrado de proyecto (solo admin) + panel de auth rediseñado con video de marca
+- CORS en desarrollo: `CORS_ALLOWED_ORIGIN_REGEXES` acepta cualquier puerto de `localhost`/`127.0.0.1` cuando `DEBUG=True`, porque Vite prueba otro puerto libre si el suyo (`5173`) está ocupado y el default fijo bloqueaba el frontend en ese caso
+- Archivado de tareas: `Task.is_archived` (con migración), endpoints `POST /api/tasks/{id}/archive/` y `/unarchive/` (solo admin del proyecto, y solo si `status == "done"`), el listado las excluye por defecto y las mantiene en las queries SQL de dashboard (no se pierden las métricas históricas); toggle "Ver archivadas" en el frontend con acción de desarchivar
+- El modal de detalle de tarea ahora muestra quién la creó (`CREADO POR`), no solo el asignado
+- Borrado de tareas habilitado en el frontend (el `DELETE` ya existía en el backend, restringido a admin) con modal de confirmación
+- Hardening pensado para un despliegue directo en VPS (más allá de Docker): `DEBUG` pasa a tener default `False` en `settings.py` (antes `True`) para que una variable de entorno faltante nunca deje expuesto el modo debug ni el regex de CORS de desarrollo; se agregó `DEFAULT_PERMISSION_CLASSES: (IsAuthenticated,)` global en DRF como red de seguridad además de los permisos explícitos por vista — ver "Notas para desplegar en un VPS" en la sección Docker

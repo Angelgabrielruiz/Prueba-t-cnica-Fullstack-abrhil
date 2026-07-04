@@ -388,6 +388,12 @@ a {
   white-space: nowrap;
 }
 
+.sidebar-empty-hint {
+  padding: 4px 10px 8px;
+  font-size: 12.5px;
+  color: var(--text-placeholder);
+}
+
 .sidebar-footer {
   padding: 16px 22px;
   border-top: 1px solid var(--border);
