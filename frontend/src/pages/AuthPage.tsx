@@ -64,7 +64,7 @@ export function AuthPage() {
             {view === "login" ? (
               <>
                 <div style={{ fontWeight: 800, fontSize: 24, marginBottom: 6, letterSpacing: "-0.01em" }}>
-                  Bienvenida de vuelta
+                  Bienvenido de vuelta
                 </div>
                 <div style={{ fontSize: 14, color: "#5B6B84", marginBottom: 24 }}>
                   Ingresa tus datos para continuar.
