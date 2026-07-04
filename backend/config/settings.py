@@ -168,3 +168,12 @@ CORS_ALLOWED_ORIGINS = os.getenv(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:3000",
 ).split(",")
+
+# En desarrollo el puerto del frontend cambia seguido (Vite prueba otro si el
+# suyo está ocupado); en vez de perseguir el puerto exacto, se acepta
+# cualquier puerto de localhost/127.0.0.1. Nunca en producción (DEBUG=False).
+if DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^http://localhost:\d+$",
+        r"^http://127\.0\.0\.1:\d+$",
+    ]
